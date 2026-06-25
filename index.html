@@ -1,1 +1,334 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pitch and Frequency Demonstrator</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .container {
+            background-color: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+        }
+
+        canvas {
+            background-color: #1a1a1a;
+            border-radius: 6px;
+            width: 100%;
+            height: 350px;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        input[type=range] {
+            flex-grow: 1;
+            height: 8px;
+            border-radius: 5px;
+            accent-color: #3498db;
+            cursor: pointer;
+        }
+
+        .freq-display {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+            min-width: 120px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: white;
+            background-color: #3498db;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #2980b9;
+        }
+
+        #audioBtn { background-color: #2ecc71; }
+        #audioBtn:hover { background-color: #27ae60; }
+        #audioBtn.playing { background-color: #e74c3c; }
+        #audioBtn.playing:hover { background-color: #c0392b; }
+
+        #pauseBtn { background-color: #f39c12; }
+        #pauseBtn:hover { background-color: #d35400; }
+
+        #waveLengthBtn { background-color: #9b59b6; }
+        #waveLengthBtn:hover { background-color: #8e44ad; }
+        #waveLengthBtn.active { background-color: #16a085; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Pitch vs. Frequency</h1>
+    <p>Watch how individual molecules (red dots) simply oscillate back and forth, while the overall compression waves move forward.</p>
+    
+    <canvas id="waveCanvas" width="800" height="350"></canvas>
+    
+    <div class="controls">
+        <div class="btn-group">
+            <button id="audioBtn">Start Audio</button>
+            <button id="pauseBtn">Pause Animation</button>
+            <button id="waveLengthBtn">Show Wavelength</button>
+        </div>
+        
+        <div class="slider-group">
+            <label for="freqSlider"><strong>Frequency:</strong></label>
+            <input type="range" id="freqSlider" min="100" max="800" value="300" step="1">
+            <div class="freq-display"><span id="freqValue">300</span> Hz</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+    const freqSlider = document.getElementById('freqSlider');
+    const freqValue = document.getElementById('freqValue');
+    const audioBtn = document.getElementById('audioBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const waveLengthBtn = document.getElementById('waveLengthBtn');
+
+    // Audio state
+    let audioCtx = null;
+    let oscillator = null;
+    let gainNode = null;
+    let isPlaying = false;
+
+    // Simulation/Animation state
+    let phase = 0;
+    let isPaused = false;
+    let showWavelength = false;
+
+    // Generate organic field of particles
+    const particles = [];
+    const numRows = 8;
+    const canvasWidth = 800;
+    
+    for (let x = 10; x < canvasWidth; x += 16) {
+        for (let row = 0; row < numRows; row++) {
+            const horizontalScatter = (Math.random() - 0.5) * 14;
+            const verticalScatter = (Math.random() - 0.5) * 8;
+            const isTracer = (row === 4 && (x === 122 || x === 314 || x === 514 || x === 706));
+            
+            particles.push({
+                homeX: x + horizontalScatter,
+                homeY: 65 + (row * 12) + verticalScatter,
+                isTracer: isTracer
+            });
+        }
+    }
+
+    function initAudio() {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        oscillator = audioCtx.createOscillator();
+        gainNode = audioCtx.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(freqSlider.value, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime); 
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start();
+    }
+
+    audioBtn.addEventListener('click', () => {
+        if (!audioCtx) {
+            initAudio();
+            isPlaying = true;
+            audioBtn.textContent = 'Stop Audio';
+            audioBtn.classList.add('playing');
+        } else if (isPlaying) {
+            audioCtx.suspend();
+            isPlaying = false;
+            audioBtn.textContent = 'Start Audio';
+            audioBtn.classList.remove('playing');
+        } else {
+            audioCtx.resume();
+            isPlaying = true;
+            audioBtn.textContent = 'Stop Audio';
+            audioBtn.classList.add('playing');
+        }
+    });
+
+    pauseBtn.addEventListener('click', () => {
+        isPaused = !isPaused;
+        pauseBtn.textContent = isPaused ? 'Resume Animation' : 'Pause Animation';
+    });
+
+    waveLengthBtn.addEventListener('click', () => {
+        showWavelength = !showWavelength;
+        waveLengthBtn.textContent = showWavelength ? 'Hide Wavelength' : 'Show Wavelength';
+        waveLengthBtn.classList.toggle('active', showWavelength);
+    });
+
+    freqSlider.addEventListener('input', (e) => {
+        const freq = e.target.value;
+        freqValue.textContent = freq;
+        if (oscillator && audioCtx) {
+            oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        }
+    });
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const freqFactor = parseFloat(freqSlider.value);
+        const wavelength = (800 / freqFactor) * 40; 
+        
+        // Progress phase only if animation isn't paused
+        if (!isPaused) {
+            const speed = 0.15; 
+            phase -= speed; 
+        }
+
+        // --- SECTION 1: LONGITUDINAL WAVE (Top Half) ---
+        particles.forEach(p => {
+            const displacement = 22 * Math.sin((2 * Math.PI * p.homeX / wavelength) + phase);
+            
+            // Only add boiling thermal jitter if not paused
+            const jitterX = isPaused ? 0 : (Math.random() - 0.5) * 3;
+            const jitterY = isPaused ? 0 : (Math.random() - 0.5) * 3;
+
+            const finalX = p.homeX + displacement + jitterX;
+            const finalY = p.homeY + jitterY;
+
+            ctx.beginPath();
+            if (p.isTracer) {
+                ctx.fillStyle = '#e74c3c'; 
+                ctx.arc(finalX, finalY, 4.5, 0, 2 * Math.PI); 
+            } else {
+                ctx.fillStyle = 'rgba(52, 152, 219, 0.65)'; 
+                ctx.arc(finalX, finalY, 2, 0, 2 * Math.PI);
+            }
+            ctx.fill();
+        });
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '14px Arial';
+        ctx.fillText("Longitudinal Wave (Sound / Air Molecules)", 20, 30);
+
+        // --- DIVIDER LINE ---
+        ctx.strokeStyle = '#333333';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, 190);
+        ctx.lineTo(canvas.width, 190);
+        ctx.stroke();
+
+        // --- SECTION 2: TRANSVERSE WAVE (Bottom Half) ---
+        const transYCenter = 270;
+        const amplitude = 40;
+
+        ctx.strokeStyle = '#e74c3c';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+
+        for (let x = 0; x < canvas.width; x++) {
+            const y = transYCenter + amplitude * Math.sin((2 * Math.PI * x / wavelength) + phase + Math.PI / 2);
+            if (x === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText("Corresponding Transverse Wave Graph", 20, 215);
+
+        // --- WAVELENGTH MEASUREMENT OVERLAY ---
+        if (showWavelength) {
+            // Find a peak position relative to the moving phase to measure one cycle cleanly
+            // Adding Math.PI/2 offset because of our graph alignment
+            const firstPeakX = (( -phase ) * wavelength / (2 * Math.PI)) % wavelength;
+            const startX = firstPeakX < 100 ? firstPeakX + wavelength : firstPeakX;
+            const endX = startX + wavelength;
+
+            ctx.strokeStyle = '#f1c40f';
+            ctx.fillStyle = '#f1c40f';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]); // Dashed guide lines
+
+            // Vertical bounds indicating 1 Wavelength (λ) across both views
+            ctx.beginPath();
+            ctx.moveTo(startX, 45); ctx.lineTo(startX, 320);
+            ctx.moveTo(endX, 45); ctx.lineTo(endX, 320);
+            ctx.stroke();
+            ctx.setLineDash([]); // Reset to solid
+
+            // Draw horizontal measuring bars
+            // 1. Top bar across particles
+            ctx.beginPath();
+            ctx.moveTo(startX, 45); ctx.lineTo(endX, 45);
+            ctx.moveTo(startX, 40); ctx.lineTo(startX, 50);
+            ctx.moveTo(endX, 40); ctx.lineTo(endX, 50);
+            // 2. Bottom bar across graph peaks
+            ctx.moveTo(startX, 320); ctx.lineTo(endX, 320);
+            ctx.moveTo(startX, 315); ctx.lineTo(startX, 325);
+            ctx.moveTo(endX, 315); ctx.lineTo(endX, 325);
+            ctx.stroke();
+
+            // Render Wavelength Symbol (λ) Text
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText("1 Wavelength (λ)", startX + (wavelength / 2) - 45, 38);
+            ctx.fillText("1 Wavelength (λ)", startX + (wavelength / 2) - 45, 335);
+        }
+
+        requestAnimationFrame(draw);
+    }
+
+    draw();
+</script>
+
+</body>
+</html>
